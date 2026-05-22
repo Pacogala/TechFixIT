@@ -49,13 +49,27 @@ export default function Settings() {
     rfc: '',
     address: '',
     phone: '',
-    customMessage: '¡Gracias por su confianza!'
+    customMessage: '¡Gracias por su confianza!',
+    pdfPrimaryColor: '#0f172a',
+    pdfAccentColor: '#3b82f6',
+    pdfTermsAndConditions: '1. El equipo se recibe para diagnóstico inicial.\n2. No nos hacemos responsables por pérdida de información.\n3. El tiempo estimado de respuesta es de 24 a 48 horas.'
   });
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'business'), (snap) => {
       if (snap.exists()) {
-        setBusiness(snap.data() as BusinessSettings);
+        const data = snap.data();
+        setBusiness({
+          name: data.name || 'TechCRM Solutions',
+          rfc: data.rfc || '',
+          address: data.address || '',
+          phone: data.phone || '',
+          customMessage: data.customMessage || '¡Gracias por su confianza!',
+          logo: data.logo || '',
+          pdfPrimaryColor: data.pdfPrimaryColor || '#0f172a',
+          pdfAccentColor: data.pdfAccentColor || '#3b82f6',
+          pdfTermsAndConditions: data.pdfTermsAndConditions || '1. El equipo se recibe para diagnóstico inicial.\n2. No nos hacemos responsables por pérdida de información.\n3. El tiempo estimado de respuesta es de 24 a 48 horas.'
+        });
       }
     });
     return unsub;
@@ -209,6 +223,63 @@ export default function Settings() {
                   className="input-base min-h-[100px] resize-none"
                   placeholder="Ej. Gracias por su confianza. Los equipos no reclamados después de 30 días se consideran abandonados."
                 />
+              </div>
+
+              <div className="pt-6 border-t border-brand-border space-y-6">
+                <h4 className="text-xs font-black uppercase tracking-widest text-brand-secondary flex items-center gap-2">
+                  <FileText className="size-4" /> Personalización de Formato de Documentos PDF
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="form-group">
+                    <label className="text-[10px] uppercase font-bold text-brand-text-dim mb-2 block">Color Primario de PDF</label>
+                    <div className="flex gap-3">
+                      <input 
+                        type="color" 
+                        value={business.pdfPrimaryColor || '#0f172a'}
+                        onChange={e => setBusiness({...business, pdfPrimaryColor: e.target.value})}
+                        className="w-12 h-10 rounded-xl bg-transparent border-0 cursor-pointer p-0"
+                      />
+                      <input 
+                        type="text" 
+                        value={business.pdfPrimaryColor || '#0f172a'}
+                        onChange={e => setBusiness({...business, pdfPrimaryColor: e.target.value})}
+                        className="input-base font-mono uppercase text-xs flex-1"
+                        placeholder="#0F172A"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="text-[10px] uppercase font-bold text-brand-text-dim mb-2 block">Color de Acento de PDF</label>
+                    <div className="flex gap-3">
+                      <input 
+                        type="color" 
+                        value={business.pdfAccentColor || '#3b82f6'}
+                        onChange={e => setBusiness({...business, pdfAccentColor: e.target.value})}
+                        className="w-12 h-10 rounded-xl bg-transparent border-0 cursor-pointer p-0"
+                      />
+                      <input 
+                        type="text" 
+                        value={business.pdfAccentColor || '#3b82f6'}
+                        onChange={e => setBusiness({...business, pdfAccentColor: e.target.value})}
+                        className="input-base font-mono uppercase text-xs flex-1"
+                        placeholder="#3B82F6"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="text-[10px] uppercase font-bold text-brand-text-dim mb-2 block">Términos y Condiciones (Por línea)</label>
+                  <textarea 
+                    value={business.pdfTermsAndConditions || ''}
+                    onChange={e => setBusiness({...business, pdfTermsAndConditions: e.target.value})}
+                    className="input-base min-h-[120px]"
+                    placeholder="Escribe cada término en una línea..."
+                  />
+                  <span className="text-[9px] text-brand-text-dim font-bold mt-1 block">Cada línea corresponderá a una cláusula numerada en el pie del PDF.</span>
+                </div>
               </div>
 
               <div className="flex justify-end pt-6 border-t border-brand-border">

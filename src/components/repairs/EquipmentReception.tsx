@@ -12,21 +12,80 @@ import {
   Monitor, 
   Hash,
   Info,
-  Check
+  Check,
+  Search
 } from 'lucide-react';
 import { db, storage, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { collection, addDoc, serverTimestamp, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import { useAuth } from '../../context/AuthContext';
-import { EquipmentType, RepairStatus, BusinessSettings } from '../../types';
+import { EquipmentType, RepairStatus, BusinessSettings, Customer } from '../../types';
 import { generateReceptionReceipt } from '../../lib/pdfService';
 import { ActivityAction, logActivity } from '../../lib/activityLogger';
+
+const compressImage = (file: File): Promise<File> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1024;
+        const MAX_HEIGHT = 1024;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const compressedFile = new File([blob], file.name, {
+                type: 'image/jpeg',
+                lastModified: Date.now(),
+              });
+              resolve(compressedFile);
+            } else {
+              resolve(file);
+            }
+          },
+          'image/jpeg',
+          0.7
+        );
+      };
+      img.onerror = () => resolve(file);
+    };
+    reader.onerror = () => resolve(file);
+  });
+};
 
 export default function EquipmentReception() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [savedRepair, setSavedRepair] = useState<any>(null);
   const [business, setBusiness] = useState<BusinessSettings | null>(null);
+
+  // Registered customer search structures
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [searchTermCustomer, setSearchTermCustomer] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -41,6 +100,16 @@ export default function EquipmentReception() {
       }
     };
     loadBusiness();
+
+    // Subscribe to customers collection
+    const q = query(collection(db, 'customers'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
+    }, (err) => {
+      console.error("Error subscribing to customers inside EquipmentReception:", err);
+    });
+
+    return unsubscribe;
   }, [user]);
   
   // Client Data
@@ -58,10 +127,12 @@ export default function EquipmentReception() {
   const [photos, setPhotos] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const resetForm = () => {
     setClientName('');
     setClientPhone('');
+    setSearchTermCustomer('');
     setBrand('');
     setModel('');
     setSerial('');
@@ -156,7 +227,10 @@ export default function EquipmentReception() {
 
       for (const photo of photos) {
         try {
-          const url = await uploadPhoto(photo);
+          console.log('Compressing original image of size:', photo.size);
+          const compressed = await compressImage(photo);
+          console.log('Compressed to size:', compressed.size);
+          const url = await uploadPhoto(compressed);
           photoUrls.push(url);
         } catch (photoErr) {
           console.error('Non-blocking error uploading photo, skipping...', photoErr);
@@ -214,9 +288,9 @@ export default function EquipmentReception() {
     window.open(url, '_blank');
   };
 
-  const downloadPDF = () => {
+  const downloadPDF = async () => {
     if (!savedRepair) return;
-    generateReceptionReceipt({
+    await generateReceptionReceipt({
       id: savedRepair.id,
       client: savedRepair.client,
       equipment: savedRepair.equipment,
@@ -284,14 +358,71 @@ export default function EquipmentReception() {
 
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* Customer Information */}
-        <section className="card">
+        <section className="card overflow-visible">
           <div className="flex items-center gap-3 mb-8">
             <div className="p-2 bg-brand-primary/10 rounded-lg">
               <UserPlus className="text-brand-primary size-5" />
             </div>
             <h2 className="text-sm font-black uppercase tracking-widest text-brand-text">Información del Cliente</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative">
+            {/* Customer Search Autocomplete */}
+            <div className="form-group md:col-span-2 relative">
+              <label className="text-[10px] uppercase tracking-widest font-bold text-brand-text-dim mb-2 block">Buscar Cliente Registrado (Opcional)</label>
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-text-dim size-4" />
+                <input 
+                  type="text"
+                  className="input-base pl-12"
+                  placeholder="Escribe el nombre o teléfono y selecciona..."
+                  value={searchTermCustomer}
+                  onChange={(e) => {
+                    setSearchTermCustomer(e.target.value);
+                    setShowSuggestions(true);
+                  }}
+                  onFocus={() => setShowSuggestions(true)}
+                />
+              </div>
+              
+              {/* Autocomplete Suggestions */}
+              {showSuggestions && searchTermCustomer && (
+                <div className="absolute left-0 right-0 mt-2 bg-brand-card border border-brand-border rounded-2xl shadow-2xl max-h-60 overflow-y-auto z-50">
+                  {customers
+                    .filter(c => 
+                      c.name.toLowerCase().includes(searchTermCustomer.toLowerCase()) || 
+                      c.phone.includes(searchTermCustomer)
+                    )
+                    .map(c => (
+                      <div 
+                        key={c.id}
+                        className="p-4 hover:bg-brand-primary/10 cursor-pointer flex justify-between items-center border-b border-brand-border/30 last:border-0 transition-colors"
+                        onClick={() => {
+                          setClientName(c.name);
+                          setClientPhone(c.phone);
+                          setSearchTermCustomer(c.name);
+                          setShowSuggestions(false);
+                        }}
+                      >
+                        <div>
+                          <p className="text-sm font-bold text-brand-text">{c.name}</p>
+                          <p className="text-[10px] text-brand-text-dim font-bold uppercase tracking-widest">Tel: {c.phone}</p>
+                        </div>
+                        <span className="text-[9px] font-black text-brand-primary uppercase tracking-widest bg-brand-primary/10 px-3 py-1.5 rounded-lg">Seleccionar</span>
+                      </div>
+                    ))}
+                  {customers.filter(c => 
+                    c.name.toLowerCase().includes(searchTermCustomer.toLowerCase()) || 
+                    c.phone.includes(searchTermCustomer)
+                  ).length === 0 && (
+                    <div className="p-4 text-center text-xs text-brand-text-dim">
+                      No se encontraron resultados. Ingresa los datos abajo para crearlo al guardar.
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="form-group">
               <label className="text-[10px] uppercase tracking-widest font-bold text-brand-text-dim mb-2 block">Nombre del Cliente</label>
               <input 
@@ -406,13 +537,22 @@ export default function EquipmentReception() {
               </div>
               <h2 className="text-sm font-black uppercase tracking-widest text-brand-text">Evidencia Estética</h2>
             </div>
-            <button 
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="btn-outline py-1.5 px-3 text-[10px] uppercase tracking-widest"
-            >
-              Cargar Archivos
-            </button>
+            <div className="flex gap-2">
+              <button 
+                type="button"
+                onClick={() => cameraInputRef.current?.click()}
+                className="btn-outline py-1.5 px-3 text-[10px] uppercase tracking-widest flex items-center gap-2 border-brand-primary text-brand-primary hover:bg-brand-primary/10"
+              >
+                <Camera className="size-3" /> Abrir Cámara
+              </button>
+              <button 
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="btn-outline py-1.5 px-3 text-[10px] uppercase tracking-widest"
+              >
+                Cargar Archivos
+              </button>
+            </div>
           </div>
 
           <input 
@@ -421,6 +561,14 @@ export default function EquipmentReception() {
             className="hidden" 
             multiple 
             accept="image/*"
+            onChange={handlePhotoChange}
+          />
+          <input 
+            type="file" 
+            ref={cameraInputRef}
+            className="hidden" 
+            accept="image/*"
+            capture="environment"
             onChange={handlePhotoChange}
           />
 

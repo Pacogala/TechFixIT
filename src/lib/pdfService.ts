@@ -22,10 +22,37 @@ interface ReceiptData {
     address?: string;
     phone?: string;
     customMessage?: string;
+    logo?: string;
+    pdfPrimaryColor?: string;
+    pdfAccentColor?: string;
+    pdfTermsAndConditions?: string;
   };
 }
 
-export const generateReceptionReceipt = (data: ReceiptData) => {
+const loadImage = (url: string): Promise<HTMLImageElement | null> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.src = url;
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+  });
+};
+
+const hexToRgb = (hex?: string, defaultColor: [number, number, number] = [15, 23, 42]): [number, number, number] => {
+  if (!hex) return defaultColor;
+  const cleanHex = hex.replace('#', '');
+  const r = parseInt(cleanHex.substring(0, 2), 16);
+  const g = parseInt(cleanHex.substring(2, 4), 16);
+  const b = parseInt(cleanHex.substring(4, 6), 16);
+  return [
+    isNaN(r) ? defaultColor[0] : r, 
+    isNaN(g) ? defaultColor[1] : g, 
+    isNaN(b) ? defaultColor[2] : b
+  ];
+};
+
+export const generateReceptionReceipt = async (data: ReceiptData) => {
   const doc = new jsPDF() as any;
   const date = format(new Date(), "dd 'de' MMMM, yyyy", { locale: es });
   const ticketId = data.id || `REC-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -35,33 +62,49 @@ export const generateReceptionReceipt = (data: ReceiptData) => {
   const businessAddress = data.business?.address || '';
   const businessRFC = data.business?.rfc ? `RFC: ${data.business.rfc}` : '';
 
-  // Header Colors
-  const primaryColor: [number, number, number] = [15, 23, 42]; // Slate 900
-  const accentColor: [number, number, number] = [59, 130, 246]; // Blue 500
+  // Header Colors (Customizable)
+  const primaryColor = hexToRgb(data.business?.pdfPrimaryColor, [15, 23, 42]); // Default Slate 900
+  const accentColor = hexToRgb(data.business?.pdfAccentColor, [59, 130, 246]); // Default Blue 500
 
-  // Header
+  // Header Background
   doc.setFillColor(...primaryColor);
   doc.rect(0, 0, 210, 40, 'F');
   
+  // Try loading company logo
+  let logoImg: HTMLImageElement | null = null;
+  if (data.business?.logo) {
+    logoImg = await loadImage(data.business.logo);
+  }
+
+  const textStartX = logoImg ? 45 : 20;
+
+  if (logoImg) {
+    try {
+      doc.addImage(logoImg, 'PNG', 20, 10, 20, 20);
+    } catch (e) {
+      console.warn("Failed drawing logo image in PDF:", e);
+    }
+  }
+
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(18);
+  doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
-  doc.text(businessName.toUpperCase(), 20, 22);
+  doc.text(businessName.toUpperCase(), textStartX, 22);
   
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
-  doc.text(businessPhone, 20, 28);
-  if (businessAddress) doc.text(businessAddress, 20, 33);
+  doc.text(businessPhone, textStartX, 28);
+  if (businessAddress) doc.text(businessAddress, textStartX, 33);
 
   doc.setTextColor(...accentColor);
-  doc.setFontSize(14);
+  doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
-  doc.text('RECIBO DE RECEPCIÓN', 130, 22);
+  doc.text('RECIBO DE RECEPCIÓN', 135, 22);
   
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(10);
-  doc.text(`TICKET: ${ticketId}`, 130, 28);
-  if (businessRFC) doc.text(businessRFC, 130, 33);
+  doc.text(`TICKET: ${ticketId}`, 135, 28);
+  if (businessRFC) doc.text(businessRFC, 135, 33);
 
   // Content
   doc.setTextColor(50, 50, 50);
@@ -123,15 +166,23 @@ export const generateReceptionReceipt = (data: ReceiptData) => {
   doc.setFontSize(8);
   doc.setTextColor(150, 150, 150);
   doc.text('TÉRMINOS Y CONDICIONES:', 20, footerY);
-  doc.text('1. El equipo se recibe para diagnóstico inicial.', 20, footerY + 5);
-  doc.text('2. No nos hacemos responsables por pérdida de información.', 20, footerY + 9);
-  doc.text('3. El tiempo estimado de respuesta es de 24 a 48 horas.', 20, footerY + 13);
+
+  const rawTerms = data.business?.pdfTermsAndConditions || 
+    "1. El equipo se recibe para diagnóstico inicial.\n2. No nos hacemos responsables por pérdida de información.\n3. El tiempo estimado de respuesta es de 24 a 48 horas.";
+  
+  const termsList = rawTerms.split('\n').filter(Boolean);
+  let currentY = footerY + 5;
+  termsList.forEach((term) => {
+    const splitTerm = doc.splitTextToSize(term, 170);
+    doc.text(splitTerm, 20, currentY);
+    currentY += (splitTerm.length * 4);
+  });
   
   if (data.business?.customMessage) {
     doc.setTextColor(...accentColor);
     doc.setFont('helvetica', 'bold');
     const splitCustom = doc.splitTextToSize(data.business.customMessage, 170);
-    doc.text(splitCustom, 20, footerY + 20);
+    doc.text(splitCustom, 20, currentY + 4);
   }
 
   doc.setTextColor(150, 150, 150);
@@ -146,30 +197,58 @@ export const generateReceptionReceipt = (data: ReceiptData) => {
   doc.save(`${ticketId}-Recibo.pdf`);
 };
 
-export const generateRepairReceipt = (repair: any, business?: any) => {
+export const generateRepairReceipt = async (repair: any, business?: any) => {
   const doc = new jsPDF() as any;
   const date = format(new Date(), "dd 'de' MMMM, yyyy", { locale: es });
   const ticketId = repair.id.substring(0, 8).toUpperCase();
 
-  const primaryColor: [number, number, number] = [15, 23, 42];
-  const accentColor: [number, number, number] = [16, 185, 129]; // Success Green
+  const businessName = business?.name || 'TechCRM Solutions';
+  const businessPhone = business?.phone || 'SOPORTE TÉCNICO Y VENTAS';
+  const businessAddress = business?.address || '';
+  const businessRFC = business?.rfc ? `RFC: ${business.rfc}` : '';
 
-  // Header
+  // Colors
+  const primaryColor = hexToRgb(business?.pdfPrimaryColor, [15, 23, 42]);
+  const accentColor = hexToRgb(business?.pdfAccentColor, [16, 185, 129]); // Default Success Green
+
+  // Header Background
   doc.setFillColor(...primaryColor);
   doc.rect(0, 0, 210, 40, 'F');
   
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  doc.text((business?.name || 'TechCRM Solutions').toUpperCase(), 20, 22);
+  // Try loading company logo
+  let logoImg: HTMLImageElement | null = null;
+  if (business?.logo) {
+    logoImg = await loadImage(business.logo);
+  }
+
+  const textStartX = logoImg ? 45 : 20;
+
+  if (logoImg) {
+    try {
+      doc.addImage(logoImg, 'PNG', 20, 10, 20, 20);
+    } catch (e) {
+      console.warn("Failed drawing logo image in PDF:", e);
+    }
+  }
   
-  doc.setFontSize(14);
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text(businessName.toUpperCase(), textStartX, 22);
+
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.text(businessPhone, textStartX, 28);
+  if (businessAddress) doc.text(businessAddress, textStartX, 33);
+  
+  doc.setFontSize(12);
   doc.setTextColor(...accentColor);
-  doc.text('COMPROBANTE DE REPARACIÓN', 120, 22);
+  doc.text('COMPROBANTE DE REPARACIÓN', 125, 22);
   
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(10);
-  doc.text(`TICKET: ${ticketId}`, 120, 30);
+  doc.text(`TICKET: ${ticketId}`, 125, 28);
+  if (businessRFC) doc.text(businessRFC, 125, 33);
 
   // Info
   doc.setTextColor(50, 50, 50);

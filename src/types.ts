@@ -96,4 +96,7 @@ export interface BusinessSettings {
   phone: string;
   logo?: string;
   customMessage?: string;
+  pdfPrimaryColor?: string;
+  pdfAccentColor?: string;
+  pdfTermsAndConditions?: string;
 }

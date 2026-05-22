@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { updateDoc, doc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { updateDoc, doc, collection, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { Repair, RepairStatus } from '../../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -15,7 +15,7 @@ import {
   AlertCircle,
   Hash
 } from 'lucide-react';
-import { generateRepairReceipt } from '../../lib/pdfService';
+import { generateRepairReceipt, generateReceptionReceipt } from '../../lib/pdfService';
 import { ActivityAction, logActivity } from '../../lib/activityLogger';
 
 interface RepairProcessModalProps {
@@ -32,6 +32,15 @@ export default function RepairProcessModal({ repair, onClose }: RepairProcessMod
   const [labor, setLabor] = useState(repair.quote?.labor || 0);
   const [status, setStatus] = useState<RepairStatus>(repair.status);
   const [authorized, setAuthorized] = useState(repair.quote?.authorized || false);
+  const [business, setBusiness] = useState<any>(null);
+
+  useEffect(() => {
+    getDoc(doc(db, 'settings', 'business')).then((snap) => {
+      if (snap.exists()) {
+        setBusiness(snap.data());
+      }
+    }).catch(err => console.error("Error loading business info in RepairProcessModal:", err));
+  }, []);
 
   // Totals calculation
   const partsTotal = parts.reduce((sum, p) => sum + (p.price * p.quantity), 0);
@@ -96,7 +105,7 @@ export default function RepairProcessModal({ repair, onClose }: RepairProcessMod
           createdAt: serverTimestamp()
         });
         logActivity(ActivityAction.SALE, `Venta generada por liquidación de reparación #${repair.id.substring(0,8)}`);
-        generateRepairReceipt({ ...repair, ...updateData });
+        await generateRepairReceipt({ ...repair, ...updateData }, business);
         onClose();
       } else {
         alert('Cambios guardados correctamente');
@@ -143,7 +152,46 @@ export default function RepairProcessModal({ repair, onClose }: RepairProcessMod
           <div className="grid md:grid-cols-2 gap-8">
             {/* Left Column: Diagnostics & Actions */}
             <div className="space-y-6">
-              <section className="space-y-3">
+              {/* Datos de Recepción */}
+              <section className="p-4 bg-brand-bg/65 rounded-2xl border border-brand-border space-y-3">
+                <h3 className="text-xs font-black uppercase tracking-widest text-brand-secondary flex items-center gap-2">
+                  <ClipboardCheck size={14} /> Observaciones de Recepción
+                </h3>
+                <div className="space-y-3">
+                  <p className="text-xs text-brand-text whitespace-pre-wrap leading-relaxed">
+                    {repair.notes || 'Sin observaciones registradas durante la recepción.'}
+                  </p>
+                  
+                  {repair.photos && repair.photos.length > 0 && (
+                    <div className="pt-2 border-t border-brand-border/30">
+                      <p className="text-[10px] font-bold text-brand-text-dim uppercase tracking-widest mb-2 font-mono">EVIDENCIA DE RECEPCIÓN</p>
+                      <div className="flex flex-wrap gap-2">
+                        {repair.photos.map((photoUrl, index) => (
+                          <a 
+                            key={index} 
+                            href={photoUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="relative block w-12 h-12 rounded-lg border border-brand-border overflow-hidden hover:scale-105 active:scale-95 transition-all"
+                          >
+                            <img 
+                              src={photoUrl} 
+                              alt={`Evidencia ${index + 1}`} 
+                              className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <span className="text-[8px] font-bold text-white uppercase font-mono">VER</span>
+                            </div>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section className="space-y-3 py-1">
                 <label className="text-xs font-black text-brand-text-dim uppercase tracking-widest flex items-center gap-2">
                   <ClipboardCheck size={14} className="text-brand-primary" /> Diagnóstico Técnico
                 </label>
@@ -294,10 +342,25 @@ export default function RepairProcessModal({ repair, onClose }: RepairProcessMod
 
           <div className="flex gap-3">
             <button 
-              onClick={() => generateRepairReceipt(repair)}
+              type="button"
+              onClick={async () => {
+                await generateReceptionReceipt({
+                  id: repair.id.substring(0, 8).toUpperCase(),
+                  client: repair.client || { name: 'N/A', phone: '000' },
+                  equipment: repair.equipment,
+                  notes: repair.notes || '',
+                  business: business || undefined
+                });
+              }}
+              className="btn-outline py-2.5 text-[10px] font-black flex items-center gap-2 border-brand-primary/40 text-brand-primary hover:bg-brand-primary/10"
+            >
+              <Printer size={14} /> RECIBO RECEPCIÓN
+            </button>
+            <button 
+              onClick={async () => await generateRepairReceipt(repair, business)}
               className="btn-outline py-2.5 text-[10px] font-black flex items-center gap-2"
             >
-              <Printer size={14} /> TICKET
+              <Printer size={14} /> TICKET SERVICIO
             </button>
             <button 
               onClick={() => handleSave(true)}

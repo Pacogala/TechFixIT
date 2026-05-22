@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { collection, onSnapshot, query, orderBy, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, updateDoc, doc, deleteDoc, getDoc } from 'firebase/firestore';
 import { Repair, RepairStatus } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
@@ -38,6 +38,7 @@ export default function RepairList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<RepairStatus | 'all'>('all');
   const [selectedRepair, setSelectedRepair] = useState<Repair | null>(null);
+  const [business, setBusiness] = useState<any>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'repairs'), orderBy('createdAt', 'desc'));
@@ -45,6 +46,13 @@ export default function RepairList() {
       setRepairs(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Repair)));
       setLoading(false);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'repairs'));
+
+    getDoc(doc(db, 'settings', 'business')).then((snap) => {
+      if (snap.exists()) {
+        setBusiness(snap.data());
+      }
+    }).catch(err => console.error("Error fetching business info in RepairList:", err));
+
     return unsubscribe;
   }, []);
 
@@ -78,12 +86,13 @@ export default function RepairList() {
     window.open(url, '_blank');
   };
 
-  const downloadPDF = (repair: any) => {
-    generateReceptionReceipt({
+  const downloadPDF = async (repair: any) => {
+    await generateReceptionReceipt({
       id: repair.id.substring(0, 8).toUpperCase(),
       client: repair.client || { name: 'N/A', phone: '000' },
       equipment: repair.equipment,
-      notes: repair.notes
+      notes: repair.notes || '',
+      business: business || undefined
     });
   };
 
