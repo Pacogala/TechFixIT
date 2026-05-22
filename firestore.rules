@@ -1,0 +1,103 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 0. Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 1. Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isTechnician() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // 2. Validation Blueprints
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['name', 'phone', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.phone is string && data.phone.size() > 5 &&
+             data.createdAt == request.time;
+    }
+
+    function isValidRepair(data) {
+      return data.keys().hasAll(['client', 'equipment', 'status', 'createdAt', 'updatedAt']) &&
+             data.client is map &&
+             data.client.name is string &&
+             data.equipment is map &&
+             data.equipment.type in ['PC', 'Laptop', 'Celular', 'Impresora', 'Tablet', 'Otro'] &&
+             data.status in ['recibido', 'diagnostico', 'esperando_piezas', 'reparado', 'entregado'] &&
+             data.createdAt is timestamp &&
+             data.updatedAt == request.time;
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll(['name', 'price', 'stock']) &&
+             data.name is string && data.name.size() > 0 &&
+             data.price is number && data.price >= 0 &&
+             data.stock is number && data.stock >= 0;
+    }
+
+    // 3. Collection Rules
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && userId == request.auth.uid;
+      allow update: if isAdmin();
+    }
+
+    match /customers/{customerId} {
+      allow read, create, update: if isTechnician();
+    }
+
+    match /repairs/{repairId} {
+      allow read: if isTechnician();
+      allow create: if isTechnician() && isValidRepair(incoming());
+      allow update: if isTechnician();
+    }
+
+    match /sales/{saleId} {
+      allow read: if isTechnician();
+      allow create: if isTechnician();
+      allow update: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if isTechnician();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /activities/{activityId} {
+      allow read: if isAdmin();
+      allow create: if isTechnician();
+    }
+
+    match /settings/business {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

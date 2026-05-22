@@ -1,0 +1,54 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Sleek Interface Palette */
+  --color-brand-bg: #0f172a;
+  --color-brand-card: #1e293b;
+  --color-brand-text: #f8fafc;
+  --color-brand-text-dim: #94a3b8;
+  --color-brand-primary: #3b82f6;
+  --color-brand-secondary: #8b5cf6;
+  --color-brand-danger: #ef4444;
+  --color-brand-success: #10b981;
+  --color-brand-border: rgba(255, 255, 255, 0.1);
+}
+
+@layer base {
+  body {
+    @apply bg-brand-bg text-brand-text font-sans antialiased;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-brand-card border border-brand-border rounded-2xl p-6 shadow-xl;
+  }
+  
+  .input-base {
+    @apply w-full bg-brand-bg border border-brand-border rounded-xl p-3 text-white text-sm outline-none focus:border-brand-primary transition-all;
+  }
+  
+  .btn-primary {
+    @apply bg-brand-primary text-white font-semibold py-2.5 px-5 rounded-xl hover:bg-brand-primary/90 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-outline {
+    @apply bg-transparent border border-brand-border text-brand-text font-semibold py-2.5 px-5 rounded-xl hover:bg-white/5 transition-all active:scale-[0.98];
+  }
+
+  .badge {
+    @apply px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider;
+  }
+}
+
+.gradient-text {
+  @apply bg-clip-text text-transparent bg-linear-to-r from-brand-primary to-brand-secondary;
+}
+
+.glass-panel {
+  @apply bg-brand-card/80 backdrop-blur-md border border-brand-border shadow-2xl;
+}

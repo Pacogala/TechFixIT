@@ -1,0 +1,8 @@
+{
+  "name": "TechCRM - Soporte y Ventas",
+  "description": "CRM especializado para negocios de soporte técnico, reparación y venta de equipos tecnológicos.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}
