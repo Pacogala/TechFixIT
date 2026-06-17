@@ -32,6 +32,7 @@ import { db, storage, handleFirestoreError, OperationType } from '../../lib/fire
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import { BusinessSettings } from '../../types';
+import { compressImage, fileToBase64 } from '../../lib/imageUtils';
 
 type TabType = 'General' | 'Seguridad' | 'Notificaciones' | 'Apariencia' | 'Idioma' | 'Base de Datos';
 
@@ -52,7 +53,8 @@ export default function Settings() {
     customMessage: '¡Gracias por su confianza!',
     pdfPrimaryColor: '#0f172a',
     pdfAccentColor: '#3b82f6',
-    pdfTermsAndConditions: '1. El equipo se recibe para diagnóstico inicial.\n2. No nos hacemos responsables por pérdida de información.\n3. El tiempo estimado de respuesta es de 24 a 48 horas.'
+    pdfTermsAndConditions: '1. El equipo se recibe para diagnóstico inicial.\n2. No nos hacemos responsables por pérdida de información.\n3. El tiempo estimado de respuesta es de 24 a 48 horas.',
+    whatsappDefaultPrefix: '52'
   });
 
   useEffect(() => {
@@ -68,7 +70,8 @@ export default function Settings() {
           logo: data.logo || '',
           pdfPrimaryColor: data.pdfPrimaryColor || '#0f172a',
           pdfAccentColor: data.pdfAccentColor || '#3b82f6',
-          pdfTermsAndConditions: data.pdfTermsAndConditions || '1. El equipo se recibe para diagnóstico inicial.\n2. No nos hacemos responsables por pérdida de información.\n3. El tiempo estimado de respuesta es de 24 a 48 horas.'
+          pdfTermsAndConditions: data.pdfTermsAndConditions || '1. El equipo se recibe para diagnóstico inicial.\n2. No nos hacemos responsables por pérdida de información.\n3. El tiempo estimado de respuesta es de 24 a 48 horas.',
+          whatsappDefaultPrefix: data.whatsappDefaultPrefix || '52'
         });
       }
     });
@@ -81,29 +84,37 @@ export default function Settings() {
 
     setLoading(true);
     try {
-      console.log('Uploading business logo...', file.name, 'Size:', file.size);
-      const storageRef = ref(storage, `settings/logo-${Date.now()}`);
-      
-      const uploadTask = uploadBytesResumable(storageRef, file);
-      
-      const url = await new Promise<string>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Logo upload timeout')), 30000);
+      console.log('Compressing and preparing logo...', file.name, 'Size:', file.size);
+      // Compress the logo first to a small size (e.g. max 512x512) to keep it compact
+      const compressedLogo = await compressImage(file, 512, 512, 0.75);
+      let url = '';
+
+      try {
+        const storageRef = ref(storage, `settings/logo-${Date.now()}`);
+        const uploadTask = uploadBytesResumable(storageRef, compressedLogo);
         
-        uploadTask.on('state_changed', 
-          null,
-          (err) => {
-            clearTimeout(timeout);
-            reject(err);
-          },
-          async () => {
-            clearTimeout(timeout);
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            resolve(downloadURL);
-          }
-        );
-      });
-      
-      console.log('Logo uploaded successfully:', url);
+        url = await new Promise<string>((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Logo upload timeout')), 15000); // 15s timeout
+          
+          uploadTask.on('state_changed', 
+            null,
+            (err) => {
+              clearTimeout(timeout);
+              reject(err);
+            },
+            async () => {
+              clearTimeout(timeout);
+              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+              resolve(downloadURL);
+            }
+          );
+        });
+        console.log('Logo uploaded to storage successfully:', url);
+      } catch (storageErr) {
+        console.warn('Storage upload failed for logo, using base64 fallback...', storageErr);
+        url = await fileToBase64(compressedLogo);
+      }
+
       setBusiness({ ...business, logo: url });
       
       // Autosave logo change
@@ -112,7 +123,7 @@ export default function Settings() {
       console.log('Business settings saved successfully.');
     } catch (err) {
       console.error('Error handling logo upload:', err);
-      handleFirestoreError(err, OperationType.WRITE, 'settings/logo');
+      // Treat as a non-breaking error so that users are not locked out
     } finally {
       setLoading(false);
     }
@@ -202,6 +213,15 @@ export default function Settings() {
                       value={business.phone}
                       onChange={e => setBusiness({...business, phone: e.target.value})}
                       className="input-base" 
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="text-[10px] uppercase font-bold text-brand-text-dim mb-2 block">Prefijo de País WhatsApp (Ej. 52, 34, 1)</label>
+                    <input 
+                      value={business.whatsappDefaultPrefix || ''}
+                      onChange={e => setBusiness({...business, whatsappDefaultPrefix: e.target.value.replace(/\D/g, '')})}
+                      className="input-base" 
+                      placeholder="52"
                     />
                   </div>
                   <div className="form-group">

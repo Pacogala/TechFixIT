@@ -99,4 +99,5 @@ export interface BusinessSettings {
   pdfPrimaryColor?: string;
   pdfAccentColor?: string;
   pdfTermsAndConditions?: string;
+  whatsappDefaultPrefix?: string;
 }

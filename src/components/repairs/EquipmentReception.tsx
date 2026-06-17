@@ -22,59 +22,8 @@ import { useAuth } from '../../context/AuthContext';
 import { EquipmentType, RepairStatus, BusinessSettings, Customer } from '../../types';
 import { generateReceptionReceipt } from '../../lib/pdfService';
 import { ActivityAction, logActivity } from '../../lib/activityLogger';
-
-const compressImage = (file: File): Promise<File> => {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target?.result as string;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1024;
-        const MAX_HEIGHT = 1024;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-
-        canvas.toBlob(
-          (blob) => {
-            if (blob) {
-              const compressedFile = new File([blob], file.name, {
-                type: 'image/jpeg',
-                lastModified: Date.now(),
-              });
-              resolve(compressedFile);
-            } else {
-              resolve(file);
-            }
-          },
-          'image/jpeg',
-          0.7
-        );
-      };
-      img.onerror = () => resolve(file);
-    };
-    reader.onerror = () => resolve(file);
-  });
-};
+import { compressImage, fileToBase64 } from '../../lib/imageUtils';
+import { getWhatsAppLink } from '../../lib/whatsappUtils';
 
 export default function EquipmentReception() {
   const { user } = useAuth();
@@ -230,10 +179,18 @@ export default function EquipmentReception() {
           console.log('Compressing original image of size:', photo.size);
           const compressed = await compressImage(photo);
           console.log('Compressed to size:', compressed.size);
-          const url = await uploadPhoto(compressed);
+          let url = '';
+          try {
+            url = await uploadPhoto(compressed);
+          } catch (uploadError) {
+            console.warn('Storage upload failed, falling back to compact base64...', uploadError);
+            // Re-compress to a tiny size (360x360, 0.4 quality) to keep the base64 string extremely lightweight (~10KB)
+            const superCompact = await compressImage(photo, 360, 360, 0.4);
+            url = await fileToBase64(superCompact);
+          }
           photoUrls.push(url);
         } catch (photoErr) {
-          console.error('Non-blocking error uploading photo, skipping...', photoErr);
+          console.error('Non-blocking error uploading/processing photo, skipping...', photoErr);
         }
       }
 
@@ -284,7 +241,7 @@ export default function EquipmentReception() {
   const shareWhatsApp = () => {
     if (!savedRepair) return;
     const message = `*TechCRM - Ticket de Recepción*\n\nHola ${savedRepair.client.name}, hemos recibido tu equipo:\n\n*Equipo:* ${savedRepair.equipment.brand} ${savedRepair.equipment.model}\n*S/N:* ${savedRepair.equipment.serial}\n*Folio:* #${savedRepair.id}\n\nPodrás consultar el avance de tu reparación con tu folio. ¡Gracias por tu confianza!`;
-    const url = `https://wa.me/${savedRepair.client.phone.replace(/\D/g,'')}?text=${encodeURIComponent(message)}`;
+    const url = getWhatsAppLink(savedRepair.client.phone, message, business?.whatsappDefaultPrefix || '52');
     window.open(url, '_blank');
   };
 

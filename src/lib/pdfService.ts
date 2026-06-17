@@ -29,6 +29,10 @@ interface ReceiptData {
   };
 }
 
+// Si deseas configurar tu logo manualmente de forma rígida (hardcoded), puedes pegar tu imagen en formato Base64 o una URL pública aquí:
+// Ejemplo: export const MANUAL_LOGO_BASE64 = 'data:image/png;base64,iVBORw0KGgoAAAANSRE...';
+export const MANUAL_LOGO_BASE64 = '';
+
 const loadImage = (url: string): Promise<HTMLImageElement | null> => {
   return new Promise((resolve) => {
     const img = new Image();
@@ -72,8 +76,9 @@ export const generateReceptionReceipt = async (data: ReceiptData) => {
   
   // Try loading company logo
   let logoImg: HTMLImageElement | null = null;
-  if (data.business?.logo) {
-    logoImg = await loadImage(data.business.logo);
+  const logoUrl = data.business?.logo || MANUAL_LOGO_BASE64;
+  if (logoUrl) {
+    logoImg = await loadImage(logoUrl);
   }
 
   const textStartX = logoImg ? 45 : 20;
@@ -217,8 +222,9 @@ export const generateRepairReceipt = async (repair: any, business?: any) => {
   
   // Try loading company logo
   let logoImg: HTMLImageElement | null = null;
-  if (business?.logo) {
-    logoImg = await loadImage(business.logo);
+  const logoUrl = business?.logo || MANUAL_LOGO_BASE64;
+  if (logoUrl) {
+    logoImg = await loadImage(logoUrl);
   }
 
   const textStartX = logoImg ? 45 : 20;
@@ -261,15 +267,28 @@ export const generateRepairReceipt = async (repair: any, business?: any) => {
   doc.text('RESUMEN DEL SERVICIO', 20, 75);
   doc.line(20, 77, 190, 77);
   
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text('Diagnóstico:', 20, 83);
-  doc.text(repair.diagnostic || 'No especificado', 45, 83);
-  
-  doc.text('Acciones Realizadas:', 20, 89);
-  const actions = repair.actionsPerformed?.join(', ') || 'No especificadas';
-  const splitActions = doc.splitTextToSize(actions, 145);
-  doc.text(splitActions, 45, 89);
+doc.setFont('helvetica', 'normal');
+doc.setFontSize(9);
+
+// Diagnóstico
+doc.text('Diagnóstico:', 20, 83);
+
+const diagnostic = repair.diagnostic || 'No especificado';
+const splitDiagnostic = doc.splitTextToSize(diagnostic, 170);
+doc.text(splitDiagnostic, 20, 89); // Empieza una línea abajo
+
+// Calcular la siguiente posición Y
+let currentY = 89 + (splitDiagnostic.length * 5);
+
+// Acciones Realizadas
+doc.text('Acciones Realizadas:', 20, currentY);
+
+const actions = repair.actionsPerformed?.join(', ') || 'No especificadas';
+const splitActions = doc.splitTextToSize(actions, 170);
+doc.text(splitActions, 20, currentY + 6); // Una línea abajo
+
+// Si necesitas seguir agregando contenido:
+currentY = currentY + 6 + (splitActions.length * 5);
 
   // Table of Parts and Labor
   const parts = repair.parts || [];
@@ -286,7 +305,7 @@ export const generateRepairReceipt = async (repair: any, business?: any) => {
   }
 
   autoTable(doc, {
-    startY: 105,
+    startY: 125,
     head: [['Descripción / Refacción', 'Cant.', 'P. Unit', 'Total']],
     body: body,
     headStyles: { fillColor: primaryColor },
@@ -304,5 +323,39 @@ export const generateRepairReceipt = async (repair: any, business?: any) => {
   doc.setTextColor(150, 150, 150);
   doc.text('Este documento sirve como comprobante de los trabajos realizados y piezas sustituidas.', 20, finalY + 10);
   
+
+  // Terms and Signature
+  const footerY = 210;
+  doc.setFontSize(8);
+  doc.setTextColor(150, 150, 150);
+  doc.text('TÉRMINOS Y CONDICIONES:', 20, footerY);
+
+  const rawTerms = business?.pdfTermsAndConditions || 
+    "1. El equipo se entrega funcionando correctamente.\n2. No nos hacemos responsables por pérdida de información.\n3. Garantía de 15 días en defectos de fabrica.";
+  
+  const termsList = rawTerms.split('\n').filter(Boolean);
+  currentY = footerY + 5;
+  termsList.forEach((term) => {
+    const splitTerm = doc.splitTextToSize(term, 170);
+    doc.text(splitTerm, 20, currentY);
+    currentY += (splitTerm.length * 4);
+  });
+  
+  if (business?.customMessage) {
+    doc.setTextColor(...accentColor);
+    doc.setFont('helvetica', 'bold');
+    const splitCustom = doc.splitTextToSize(business.customMessage, 170);
+    doc.text(splitCustom, 20, currentY + 4);
+  }
+
+  doc.setTextColor(150, 150, 150);
+  doc.setFont('helvetica', 'normal');
+  doc.line(30, 260, 90, 260);
+  doc.text('Firma del Técnico', 45, 265);
+  
+  doc.line(120, 260, 180, 260);
+  doc.text('Firma del Cliente', 135, 265);
+
+  // Save the PDF
   doc.save(`${ticketId}-Servicio.pdf`);
 };

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { updateDoc, doc, collection, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
-import { Repair, RepairStatus } from '../../types';
+import { updateDoc, doc, collection, addDoc, serverTimestamp, getDoc, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { Repair, RepairStatus, Product } from '../../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
@@ -33,6 +33,14 @@ export default function RepairProcessModal({ repair, onClose }: RepairProcessMod
   const [status, setStatus] = useState<RepairStatus>(repair.status);
   const [authorized, setAuthorized] = useState(repair.quote?.authorized || false);
   const [business, setBusiness] = useState<any>(null);
+  
+  // Inventory integration states
+  const [dbProducts, setDbProducts] = useState<Product[]>([]);
+  const [activeDropdownIndex, setActiveDropdownIndex] = useState<number | null>(null);
+  const [registeringPartIndex, setRegisteringPartIndex] = useState<number | null>(null);
+  const [regCategory, setRegCategory] = useState('Hardware');
+  const [regSku, setRegSku] = useState('');
+  const [regStock, setRegStock] = useState(5);
 
   useEffect(() => {
     getDoc(doc(db, 'settings', 'business')).then((snap) => {
@@ -40,6 +48,16 @@ export default function RepairProcessModal({ repair, onClose }: RepairProcessMod
         setBusiness(snap.data());
       }
     }).catch(err => console.error("Error loading business info in RepairProcessModal:", err));
+
+    // Subscribe to products in inventory
+    const q = query(collection(db, 'products'), orderBy('name'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setDbProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+    }, (err) => {
+      console.error("Error subscribing to products inside RepairProcessModal:", err);
+    });
+
+    return unsubscribe;
   }, []);
 
   // Totals calculation
@@ -61,10 +79,16 @@ export default function RepairProcessModal({ repair, onClose }: RepairProcessMod
     setParts([...parts, { name: '', serial: '', price: 0, quantity: 1 }]);
   };
 
-  const updatePart = (index: number, field: string, value: any) => {
-    const newParts = [...parts];
-    newParts[index] = { ...newParts[index], [field]: value };
-    setParts(newParts);
+  const updatePart = (index: number, fieldOrFields: string | Record<string, any>, value?: any) => {
+    setParts(prev => {
+      const newParts = [...prev];
+      if (typeof fieldOrFields === 'string') {
+        newParts[index] = { ...newParts[index], [fieldOrFields]: value };
+      } else {
+        newParts[index] = { ...newParts[index], ...fieldOrFields };
+      }
+      return newParts;
+    });
   };
 
   const removePart = (index: number) => {
@@ -241,22 +265,65 @@ export default function RepairProcessModal({ repair, onClose }: RepairProcessMod
                     + Añadir Refacción
                   </button>
                 </div>
-                
-                <div className="space-y-2">
+                 <div className="space-y-2">
                   {parts.map((part, i) => (
-                    <div key={i} className="p-3 bg-brand-bg rounded-xl border border-brand-border space-y-2 relative group">
+                    <div key={i} className="p-3 bg-brand-bg rounded-xl border border-brand-border space-y-2 relative group overflow-visible">
                       <button 
                         onClick={() => removePart(i)}
-                        className="absolute top-2 right-2 text-brand-text-dim hover:text-brand-danger opacity-0 group-hover:opacity-100 transition-all"
+                        className="absolute top-2 right-2 text-brand-text-dim hover:text-brand-danger opacity-0 group-hover:opacity-100 transition-all z-10"
                       >
                         <Trash2 size={12} />
                       </button>
-                      <input 
-                        className="input-base py-1.5 text-xs" 
-                        placeholder="Nombre de la refacción"
-                        value={part.name}
-                        onChange={(e) => updatePart(i, 'name', e.target.value)}
-                      />
+                      
+                      {/* Name input with Autocomplete */}
+                      <div className="relative">
+                        <input 
+                          className="input-base py-1.5 text-xs pr-8" 
+                          placeholder="Nombre de la refacción"
+                          value={part.name}
+                          onChange={(e) => {
+                            updatePart(i, 'name', e.target.value);
+                            setActiveDropdownIndex(i);
+                          }}
+                          onFocus={() => setActiveDropdownIndex(i)}
+                          onBlur={() => {
+                            // Delay to allow clicking on dropdown items
+                            setTimeout(() => setActiveDropdownIndex(null), 250);
+                          }}
+                        />
+                        
+                        {activeDropdownIndex === i && part.name.trim() && (
+                          <div className="absolute left-0 right-0 mt-1 bg-brand-card border border-brand-border rounded-xl shadow-2xl max-h-48 overflow-y-auto z-50">
+                            {dbProducts
+                              .filter(p => p.name.toLowerCase().includes(part.name.toLowerCase()))
+                              .map(p => (
+                                <div 
+                                  key={p.id}
+                                  className="p-3 hover:bg-brand-primary/15 cursor-pointer flex justify-between items-center text-xs border-b border-brand-border/30 last:border-0 transition-colors"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    updatePart(i, { name: p.name, price: p.price });
+                                    setActiveDropdownIndex(null);
+                                  }}
+                                >
+                                  <div>
+                                    <p className="font-bold text-brand-text">{p.name}</p>
+                                    <p className="text-[10px] text-brand-text-dim font-bold uppercase tracking-wide">
+                                      Stock: {p.stock} • SKU: {p.sku || 'N/A'}
+                                    </p>
+                                  </div>
+                                  <span className="font-black text-xs text-brand-primary font-mono">${p.price.toLocaleString()}</span>
+                                </div>
+                              ))}
+                            {dbProducts.filter(p => p.name.toLowerCase().includes(part.name.toLowerCase())).length === 0 && (
+                              <div className="p-3 text-center text-[10px] text-brand-text-dim italic font-medium">
+                                No se encontraron coincidencias exactas.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
                       <div className="grid grid-cols-2 gap-2">
                         <input 
                           className="input-base py-1.5 text-[10px]" 
@@ -268,10 +335,149 @@ export default function RepairProcessModal({ repair, onClose }: RepairProcessMod
                           type="number"
                           className="input-base py-1.5 text-xs" 
                           placeholder="Precio"
-                          value={part.price}
+                          value={part.price || ''}
                           onChange={(e) => updatePart(i, 'price', Number(e.target.value))}
                         />
                       </div>
+
+                      {/* Stock Inventory Matches indicator & actions */}
+                      {part.name.trim() && (
+                        (() => {
+                          const exactMatch = dbProducts.find(p => p.name.toLowerCase() === part.name.trim().toLowerCase());
+                          if (exactMatch) {
+                            return (
+                              <div className="mt-1 pt-1.5 border-t border-brand-border/30 flex items-center justify-between">
+                                <span className="text-[9px] font-black text-brand-success uppercase tracking-wider flex items-center gap-1 font-mono">
+                                  ✓ En Inventario
+                                </span>
+                                <span className="text-[9px] font-bold text-brand-text-dim uppercase font-mono bg-brand-bg px-2 py-0.5 rounded border border-brand-border/40">
+                                  Stock: {exactMatch.stock} u.
+                                </span>
+                              </div>
+                            );
+                          } else {
+                            return (
+                              <div className="mt-1 pt-1.5 border-t border-brand-border/30 flex items-center justify-between">
+                                <span className="text-[9px] font-bold text-brand-text-dim flex items-center gap-1 font-mono uppercase">
+                                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-brand-danger animate-pulse"></span> No registrado
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRegisteringPartIndex(i);
+                                    setRegCategory('Hardware');
+                                    setRegSku(`SKU-${Math.floor(1000 + Math.random() * 9000)}`);
+                                    setRegStock(5);
+                                  }}
+                                  className="text-[9px] font-black text-brand-primary hover:underline hover:text-brand-primary/80 uppercase tracking-wide flex items-center gap-1 bg-brand-primary/5 px-2.5 py-1.5 rounded-xl border border-brand-primary/20 transition-all active:scale-95"
+                                >
+                                  + Guardar en Inventario
+                                </button>
+                              </div>
+                            );
+                          }
+                        })()
+                      )}
+
+                      {/* Inline Product Creator Form */}
+                      {registeringPartIndex === i && (
+                        <div className="mt-2 p-3 bg-brand-card rounded-xl border border-brand-primary/40 space-y-3 animate-fade-in text-left">
+                          <div className="flex justify-between items-center pb-1 border-b border-brand-border/50">
+                            <h4 className="text-[10px] font-black uppercase tracking-widest text-brand-primary">Registrar en Inventario</h4>
+                            <button 
+                              type="button" 
+                              onClick={() => setRegisteringPartIndex(null)}
+                              className="text-sm text-brand-text-dim hover:text-white font-bold px-1"
+                            >
+                              &times;
+                            </button>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-2 text-left">
+                            <div className="form-group flex flex-col">
+                              <label className="text-[8px] uppercase font-bold text-brand-text-dim mb-1">Categoría</label>
+                              <select 
+                                value={regCategory}
+                                onChange={(e) => setRegCategory(e.target.value)}
+                                className="input-base py-1 px-2 text-[10px] bg-brand-bg border-brand-border h-7"
+                              >
+                                <option>Hardware</option>
+                                <option>Accesorios</option>
+                                <option>Pantallas</option>
+                                <option>Baterías</option>
+                                <option>Servicios</option>
+                              </select>
+                            </div>
+                            <div className="form-group flex flex-col">
+                              <label className="text-[8px] uppercase font-bold text-brand-text-dim mb-1">SKU / Código</label>
+                              <input 
+                                value={regSku}
+                                onChange={(e) => setRegSku(e.target.value)}
+                                className="input-base py-1 px-2 text-[10px] h-7"
+                                placeholder="SKU-XXXX"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-left">
+                            <div className="form-group flex flex-col">
+                              <label className="text-[8px] uppercase font-bold text-brand-text-dim mb-1">Stock Inicial</label>
+                              <input 
+                                type="number"
+                                value={regStock}
+                                onChange={(e) => setRegStock(Number(e.target.value))}
+                                className="input-base py-1 px-2 text-[10px] h-7"
+                              />
+                            </div>
+                            <div className="form-group flex flex-col">
+                              <label className="text-[8px] uppercase font-bold text-brand-text-dim mb-1">Precio</label>
+                              <input 
+                                type="number"
+                                disabled
+                                value={part.price || 0}
+                                className="input-base py-1 px-2 text-[10px] opacity-60 cursor-not-allowed h-7"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2 pt-1">
+                            <button 
+                              type="button"
+                              onClick={() => setRegisteringPartIndex(null)}
+                              className="btn-outline flex-1 py-1 text-[9px] uppercase tracking-wider h-7"
+                            >
+                              Cancelar
+                            </button>
+                            <button 
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  if (!part.name.trim()) return;
+                                  await addDoc(collection(db, 'products'), {
+                                    name: part.name.trim(),
+                                    category: regCategory,
+                                    sku: regSku.trim() || `SKU-${Math.floor(1000 + Math.random() * 9000)}`,
+                                    price: Number(part.price || 0),
+                                    stock: Number(regStock),
+                                    minStock: 2,
+                                  });
+                                  
+                                  // Log activity
+                                  logActivity(ActivityAction.CREATE, `Registrado nuevo producto desde presupuesto: ${part.name.trim()}`);
+                                  setRegisteringPartIndex(null);
+                                  alert('¡Producto agregado al inventario con éxito!');
+                                } catch (err) {
+                                  console.error("Error creating product from quote:", err);
+                                  alert('Error al registrar producto');
+                                }
+                              }}
+                              className="btn-primary flex-1 py-1 text-[9px] uppercase tracking-wider bg-brand-primary hover:bg-brand-primary/95 text-white font-black h-7"
+                            >
+                              Registrar
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                   {parts.length === 0 && (

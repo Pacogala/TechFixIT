@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { collection, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, addDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, deleteDoc, doc, updateDoc, addDoc, getDoc } from 'firebase/firestore';
 import { Customer } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { cleanWhatsAppNumber } from '../../lib/whatsappUtils';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, 
@@ -25,6 +26,7 @@ export default function CustomerList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [business, setBusiness] = useState<any>(null);
 
   // Form State
   const [name, setName] = useState('');
@@ -38,6 +40,11 @@ export default function CustomerList() {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
       setLoading(false);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'customers'));
+
+    getDoc(doc(db, 'settings', 'business')).then((snap) => {
+      if (snap.exists()) setBusiness(snap.data());
+    }).catch(err => console.error("Error loading business settings in CustomerList:", err));
+
     return unsubscribe;
   }, []);
 
@@ -150,7 +157,7 @@ export default function CustomerList() {
               <div className="flex items-center gap-3 text-xs text-brand-text-dim">
                 <div className="w-8 h-8 rounded-lg bg-brand-bg flex items-center justify-center"><Phone className="size-3" /></div>
                 <span className="font-bold">{customer.phone}</span>
-                <a href={`https://wa.me/${customer.phone.replace(/\D/g,'')}`} target="_blank" className="ml-auto text-brand-success hover:underline font-black text-[10px] uppercase">WhatsApp</a>
+                <a href={`https://wa.me/${cleanWhatsAppNumber(customer.phone, business?.whatsappDefaultPrefix || '52')}`} target="_blank" rel="noreferrer" className="ml-auto text-brand-success hover:underline font-black text-[10px] uppercase">WhatsApp</a>
               </div>
               {customer.email && (
                 <div className="flex items-center gap-3 text-xs text-brand-text-dim">

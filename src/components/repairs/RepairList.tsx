@@ -22,6 +22,7 @@ import {
 import { generateReceptionReceipt } from '../../lib/pdfService';
 import { ActivityAction, logActivity } from '../../lib/activityLogger';
 import RepairProcessModal from './RepairProcessModal';
+import { getWhatsAppLink } from '../../lib/whatsappUtils';
 
 const STATUS_CONFIG: Record<RepairStatus, { label: string; color: string; icon: any }> = {
   recibido: { label: 'RECIBIDO', color: 'bg-brand-primary/20 text-brand-primary border-brand-primary/30', icon: Clock },
@@ -82,7 +83,7 @@ export default function RepairList() {
   const shareWhatsApp = (repair: any) => {
     const statusLabel = STATUS_CONFIG[repair.status as RepairStatus].label;
     const message = `*TechCRM - Actualización de Servicio*\n\nHola ${repair.client?.name || 'cliente'}, te informamos el estado de tu equipo:\n\n*Equipo:* ${repair.equipment.brand} ${repair.equipment.model}\n*Folio:* #${repair.id.substring(0,8).toUpperCase()}\n*Estado Actual:* ${statusLabel}\n\nGracias por tu confianza.`;
-    const url = `https://wa.me/${repair.client?.phone?.replace(/\D/g,'') || ''}?text=${encodeURIComponent(message)}`;
+    const url = getWhatsAppLink(repair.client?.phone || '', message, business?.whatsappDefaultPrefix || '52');
     window.open(url, '_blank');
   };
 
