@@ -93,7 +93,8 @@ export default function RepairList() {
       client: repair.client || { name: 'N/A', phone: '000' },
       equipment: repair.equipment,
       notes: repair.notes || '',
-      business: business || undefined
+      business: business || undefined,
+      photos: repair.photos || []
     });
   };
 
@@ -167,10 +168,9 @@ export default function RepairList() {
               <div className="flex flex-col md:flex-row">
                 {/* Status Column */}
                 <div className={`md:w-2 flex transition-all ${STATUS_CONFIG[repair.status as RepairStatus]?.color.split(' ')[2] || 'bg-brand-border'}`} />
-                
-                <div className="flex-1 p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-                  <div className="flex items-center gap-5">
-                    <div className="w-12 h-12 bg-brand-bg rounded-2xl flex items-center justify-center border border-brand-border text-brand-primary">
+                <div className="flex-1 p-5 sm:p-6 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 md:gap-6">
+                  <div className="flex items-start gap-4 flex-1 min-w-0">
+                    <div className="w-12 h-12 bg-brand-bg rounded-2xl flex items-center justify-center border border-brand-border text-brand-primary shrink-0">
                       {STATUS_CONFIG[repair.status as RepairStatus] ? (
                         <div className={STATUS_CONFIG[repair.status as RepairStatus].color.split(' ')[1]}>
                           {(() => {
@@ -180,29 +180,43 @@ export default function RepairList() {
                         </div>
                       ) : <Clock className="size-6" />}
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[10px] font-black text-brand-primary bg-brand-primary/10 px-2 py-0.5 rounded">#{repair.id.substring(0,8).toUpperCase()}</span>
-                        <h3 className="font-bold text-brand-text">{repair.equipment.brand} {repair.equipment.model}</h3>
-                        {repair.quote?.authorized && (
-                          <span className="text-[8px] font-black text-brand-success flex items-center gap-1 uppercase tracking-tighter">
-                            <CheckCircle2 size={10} /> Autorizado
-                          </span>
-                        )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1.5 min-w-0 w-full">
+                        <span className="text-[10px] font-black text-brand-primary bg-brand-primary/10 px-2 py-0.5 rounded shrink-0">#{repair.id.substring(0,8).toUpperCase()}</span>
+                        <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                          <h3 className="font-bold text-brand-text truncate text-xs sm:text-base leading-tight">{repair.equipment.brand} {repair.equipment.model}</h3>
+                          {repair.quote?.authorized && (
+                            <span className="text-[8px] font-black text-brand-success flex items-center gap-1 uppercase tracking-tighter bg-brand-success/10 px-1.5 py-0.5 rounded shrink-0">
+                              <CheckCircle2 size={10} className="shrink-0" /> Autorizado
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-4 text-[10px] text-brand-text-dim font-bold uppercase tracking-wider">
-                        <span className="flex items-center gap-1"><User className="size-3" /> {repair.client?.name || 'S/N'}</span>
-                        <span className="flex items-center gap-1 text-brand-secondary"><Activity className="size-3" /> {STATUS_CONFIG[repair.status as RepairStatus]?.label}</span>
+                      <div className="flex flex-wrap items-center gap-y-1 gap-x-3 text-[10px] text-brand-text-dim font-bold uppercase tracking-wider">
+                        <span className="flex items-center gap-1 truncate max-w-[120px] sm:max-w-[200px]"><User className="size-3 shrink-0" /> {repair.client?.name || 'S/N'}</span>
+                        <span className="flex items-center gap-1 text-brand-secondary"><Activity className="size-3 shrink-0" /> {STATUS_CONFIG[repair.status as RepairStatus]?.label}</span>
                       </div>
+                      {repair.photos && repair.photos.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                          {repair.photos.slice(0, 4).map((pUrl, idx) => (
+                            <div key={idx} className="w-8 h-8 rounded-lg overflow-hidden border border-brand-border/40 bg-zinc-800 hover:scale-105 active:scale-95 transition-transform shrink-0">
+                              <img src={pUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            </div>
+                          ))}
+                          {repair.photos.length > 4 && (
+                            <span className="text-[9px] font-bold text-brand-text-dim px-1.5 py-0.5 bg-brand-bg rounded-md border border-brand-border/40 shrink-0">+{repair.photos.length - 4}</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-4 w-full md:w-auto" onClick={e => e.stopPropagation()}>
-                    <div className="flex-1 md:flex-none">
+                  <div className="flex items-center justify-between gap-3 w-full md:w-auto mt-3 md:mt-0 pt-4 md:pt-0 border-t border-brand-border/20 md:border-t-0" onClick={e => e.stopPropagation()}>
+                    <div className="flex-1 md:flex-none md:min-w-[130px] min-w-0">
                       <select 
                         value={repair.status}
                         onChange={(e) => updateStatus(repair.id, e.target.value as RepairStatus)}
-                        className={`text-[10px] font-black tracking-widest uppercase py-2 px-4 rounded-xl border appearance-none cursor-pointer transition-all ${STATUS_CONFIG[repair.status as RepairStatus].color}`}
+                        className={`text-[9px] sm:text-[10px] w-full font-black tracking-widest uppercase py-2.5 px-2.5 rounded-xl border appearance-none cursor-pointer transition-all ${STATUS_CONFIG[repair.status as RepairStatus].color}`}
                       >
                         {(Object.keys(STATUS_CONFIG) as RepairStatus[]).map(s => (
                           <option key={s} value={s} className="bg-brand-card text-brand-text">{STATUS_CONFIG[s].label}</option>
@@ -210,17 +224,17 @@ export default function RepairList() {
                       </select>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 shrink-0 justify-end">
                       <button 
                         onClick={() => shareWhatsApp(repair)}
-                        className="p-2.5 text-brand-text-dim hover:text-brand-success bg-brand-bg rounded-xl border border-brand-border hover:border-brand-success/30 transition-all outline-none"
+                        className="p-2 text-brand-text-dim hover:text-brand-success bg-brand-bg rounded-xl border border-brand-border hover:border-brand-success/30 transition-all outline-none flex items-center justify-center w-9 h-9 shrink-0"
                         title="Notificar WhatsApp"
                       >
                         <Smartphone className="size-4" />
                       </button>
                       <button 
                         onClick={() => downloadPDF(repair)}
-                        className="p-2.5 text-brand-text-dim hover:text-brand-primary bg-brand-bg rounded-xl border border-brand-border hover:border-brand-primary/30 transition-all outline-none"
+                        className="p-2 text-brand-text-dim hover:text-brand-primary bg-brand-bg rounded-xl border border-brand-border hover:border-brand-primary/30 transition-all outline-none flex items-center justify-center w-9 h-9 shrink-0"
                         title="Imprimir Ticket"
                       >
                         <Printer className="size-4" />
@@ -228,7 +242,7 @@ export default function RepairList() {
                       {isAdmin && (
                         <button 
                           onClick={() => deleteRepair(repair.id)}
-                          className="p-2.5 text-brand-text-dim hover:text-brand-danger bg-brand-bg rounded-xl border border-brand-border hover:border-brand-danger/30 transition-all outline-none"
+                          className="p-2 text-brand-text-dim hover:text-brand-danger bg-brand-bg rounded-xl border border-brand-border hover:border-brand-danger/30 transition-all outline-none flex items-center justify-center w-9 h-9 shrink-0"
                           title="Eliminar"
                         >
                           <Trash2 className="size-4" />

@@ -33,6 +33,7 @@ export default function RepairProcessModal({ repair, onClose }: RepairProcessMod
   const [status, setStatus] = useState<RepairStatus>(repair.status);
   const [authorized, setAuthorized] = useState(repair.quote?.authorized || false);
   const [business, setBusiness] = useState<any>(null);
+  const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
   
   // Inventory integration states
   const [dbProducts, setDbProducts] = useState<Product[]>([]);
@@ -189,14 +190,12 @@ export default function RepairProcessModal({ repair, onClose }: RepairProcessMod
                   {repair.photos && repair.photos.length > 0 && (
                     <div className="pt-2 border-t border-brand-border/30">
                       <p className="text-[10px] font-bold text-brand-text-dim uppercase tracking-widest mb-2 font-mono">EVIDENCIA DE RECEPCIÓN</p>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2.5">
                         {repair.photos.map((photoUrl, index) => (
-                          <a 
+                          <div 
                             key={index} 
-                            href={photoUrl} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="relative block w-12 h-12 rounded-lg border border-brand-border overflow-hidden hover:scale-105 active:scale-95 transition-all"
+                            onClick={() => setLightboxPhoto(photoUrl)}
+                            className="relative block w-14 h-14 rounded-xl border border-brand-border/60 overflow-hidden hover:scale-105 active:scale-95 transition-all cursor-pointer bg-brand-bg shadow-sm group/photo"
                           >
                             <img 
                               src={photoUrl} 
@@ -204,10 +203,10 @@ export default function RepairProcessModal({ repair, onClose }: RepairProcessMod
                               className="w-full h-full object-cover"
                               referrerPolicy="no-referrer"
                             />
-                            <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
-                              <span className="text-[8px] font-bold text-white uppercase font-mono">VER</span>
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/photo:opacity-100 transition-opacity flex items-center justify-center">
+                              <span className="text-[9px] font-black text-white uppercase tracking-wider font-mono">VER</span>
                             </div>
-                          </a>
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -525,10 +524,10 @@ export default function RepairProcessModal({ repair, onClose }: RepairProcessMod
           </div>
         </div>
 
-        <footer className="p-6 border-t border-brand-border bg-brand-bg/50 flex flex-wrap gap-3 items-center justify-between">
-          <div className="flex items-center gap-3">
+        <footer className="p-6 border-t border-brand-border bg-brand-bg/50 flex flex-col lg:flex-row gap-4 justify-between items-stretch lg:items-center">
+          <div className="flex flex-wrap items-center gap-2.5">
              <select 
-               className="btn-outline text-[10px] font-black tracking-widest py-2.5"
+               className="btn-outline text-[10px] font-black tracking-widest py-2.5 flex-1 sm:flex-none animate-fade-in"
                value={status}
                onChange={(e) => setStatus(e.target.value as RepairStatus)}
              >
@@ -540,13 +539,13 @@ export default function RepairProcessModal({ repair, onClose }: RepairProcessMod
              <button 
               onClick={() => handleSave(false)}
               disabled={loading}
-              className="btn-outline py-2.5 text-[10px] font-black"
+              className="btn-outline py-2.5 text-[10px] font-black flex-1 sm:flex-none"
              >
                GUARDAR PROGRESO
              </button>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-2.5 justify-stretch lg:justify-end">
             <button 
               type="button"
               onClick={async () => {
@@ -555,29 +554,67 @@ export default function RepairProcessModal({ repair, onClose }: RepairProcessMod
                   client: repair.client || { name: 'N/A', phone: '000' },
                   equipment: repair.equipment,
                   notes: repair.notes || '',
-                  business: business || undefined
+                  business: business || undefined,
+                  photos: repair.photos || []
                 });
               }}
-              className="btn-outline py-2.5 text-[10px] font-black flex items-center gap-2 border-brand-primary/40 text-brand-primary hover:bg-brand-primary/10"
+              className="btn-outline py-2.5 text-[10px] font-black flex items-center justify-center gap-2 border-brand-primary/40 text-brand-primary hover:bg-brand-primary/10 flex-1 sm:flex-none whitespace-nowrap"
             >
               <Printer size={14} /> RECIBO RECEPCIÓN
             </button>
             <button 
               onClick={async () => await generateRepairReceipt(repair, business)}
-              className="btn-outline py-2.5 text-[10px] font-black flex items-center gap-2"
+              className="btn-outline py-2.5 text-[10px] font-black flex items-center justify-center gap-2 flex-1 sm:flex-none whitespace-nowrap"
             >
               <Printer size={14} /> TICKET SERVICIO
             </button>
             <button 
               onClick={() => handleSave(true)}
               disabled={loading || !authorized}
-              className="btn-primary py-2.5 px-6 bg-brand-success hover:bg-brand-success/90 text-[10px] font-black flex items-center gap-2 disabled:opacity-50"
+              className="btn-primary py-2.5 px-6 bg-brand-success hover:bg-brand-success/90 text-[10px] font-black flex items-center justify-center gap-2 disabled:opacity-50 flex-1 sm:flex-none whitespace-nowrap"
             >
               <CreditCard size={14} /> LIQUIDAR Y CERRAR
             </button>
           </div>
         </footer>
       </motion.div>
+
+      {/* Lightbox Overlay */}
+      <AnimatePresence>
+        {lightboxPhoto && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setLightboxPhoto(null)}
+            className="fixed inset-0 bg-black/90 z-[9999] flex items-center justify-center p-4 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              className="relative max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl border border-brand-border/40 bg-zinc-950 flex flex-col items-center shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img 
+                src={lightboxPhoto} 
+                alt="Detalle de Evidencia" 
+                className="max-w-full max-h-[75vh] object-contain rounded-t-2xl"
+                referrerPolicy="no-referrer"
+              />
+              <div className="w-full p-4 flex justify-between items-center bg-brand-card border-t border-brand-border/40">
+                <span className="text-xs font-bold text-brand-text-dim">Evidencia fotográfica registrada</span>
+                <button 
+                  onClick={() => setLightboxPhoto(null)} 
+                  className="btn-primary py-1.5 px-4 bg-brand-danger hover:bg-brand-danger/90 text-[10px] font-black"
+                >
+                  CERRAR
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

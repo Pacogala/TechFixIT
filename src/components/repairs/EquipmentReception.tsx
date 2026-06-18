@@ -252,7 +252,8 @@ export default function EquipmentReception() {
       client: savedRepair.client,
       equipment: savedRepair.equipment,
       notes: savedRepair.notes,
-      business: business || undefined
+        business: business || undefined,
+        photos: savedRepair.photos || []
     });
   };
 

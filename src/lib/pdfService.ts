@@ -27,6 +27,7 @@ interface ReceiptData {
     pdfAccentColor?: string;
     pdfTermsAndConditions?: string;
   };
+  photos?: string[];
 }
 
 // Si deseas configurar tu logo manualmente de forma rígida (hardcoded), puedes pegar tu imagen en formato Base64 o una URL pública aquí:
@@ -166,8 +167,38 @@ export const generateReceptionReceipt = async (data: ReceiptData) => {
   const splitNotes = doc.splitTextToSize(data.notes || 'Sin observaciones adicionales.', 170);
   doc.text(splitNotes, 20, obsY + 8);
 
+  let currentYAfterNotes = obsY + 8 + (splitNotes.length * 5);
+  const photos = data.photos || [];
+  if (photos && photos.length > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text('EVIDENCIA FOTOGRÁFICA', 20, currentYAfterNotes);
+    doc.line(20, currentYAfterNotes + 2, 190, currentYAfterNotes + 2);
+    
+    let photoX = 20;
+    const photoY = currentYAfterNotes + 5;
+    const size = 25;
+    
+    for (let i = 0; i < Math.min(photos.length, 5); i++) {
+      const url = photos[i];
+      if (url) {
+        const img = await loadImage(url);
+        if (img) {
+          try {
+            const format = url.toLowerCase().includes('.png') || url.toLowerCase().includes('image/png') ? 'PNG' : 'JPEG';
+            doc.addImage(img, format, photoX, photoY, size, size);
+            photoX += size + 5;
+          } catch (err) {
+            console.warn("Failed rendering photo in reception PDF:", err);
+          }
+        }
+      }
+    }
+    currentYAfterNotes += size + 10;
+  }
+
   // Terms and Signature
-  const footerY = 210;
+  const footerY = Math.max(210, currentYAfterNotes + 10);
   doc.setFontSize(8);
   doc.setTextColor(150, 150, 150);
   doc.text('TÉRMINOS Y CONDICIONES:', 20, footerY);
@@ -313,7 +344,38 @@ currentY = currentY + 6 + (splitActions.length * 5);
     footStyles: { fillColor: [240, 240, 240], textColor: primaryColor, fontStyle: 'bold' }
   });
 
-  const finalY = (doc as any).lastAutoTable.finalY + 15;
+  let currentYAfterTable = (doc as any).lastAutoTable.finalY + 10;
+  const photos = repair.photos || [];
+  if (photos && photos.length > 0) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(50, 50, 50);
+    doc.text('EVIDENCIA FOTOGRÁFICA', 20, currentYAfterTable);
+    doc.line(20, currentYAfterTable + 2, 190, currentYAfterTable + 2);
+
+    let photoX = 20;
+    const photoY = currentYAfterTable + 5;
+    const size = 25;
+
+    for (let i = 0; i < Math.min(photos.length, 5); i++) {
+      const url = photos[i];
+      if (url) {
+        const img = await loadImage(url);
+        if (img) {
+          try {
+            const format = url.toLowerCase().includes('.png') || url.toLowerCase().includes('image/png') ? 'PNG' : 'JPEG';
+            doc.addImage(img, format, photoX, photoY, size, size);
+            photoX += size + 5;
+          } catch (err) {
+            console.warn("Failed rendering photo in repair PDF:", err);
+          }
+        }
+      }
+    }
+    currentYAfterTable += size + 10;
+  }
+
+  const finalY = currentYAfterTable + 5;
   doc.setFont('helvetica', 'bold');
   doc.text('ESTADO DE LA ORDEN:', 20, finalY);
   doc.setTextColor(...accentColor);
@@ -325,7 +387,7 @@ currentY = currentY + 6 + (splitActions.length * 5);
   
 
   // Terms and Signature
-  const footerY = 210;
+  const footerY = Math.max(210, finalY + 18);
   doc.setFontSize(8);
   doc.setTextColor(150, 150, 150);
   doc.text('TÉRMINOS Y CONDICIONES:', 20, footerY);
